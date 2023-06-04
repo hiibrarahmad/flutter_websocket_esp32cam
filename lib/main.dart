@@ -10,7 +10,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const title = 'WebSocket Demo';
+    const title = 'esp32 cam';
     return MaterialApp(
       title: title,
       home: MyHomePage(
