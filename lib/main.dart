@@ -1,15 +1,17 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-void main() => runApp(const MyApp());
+void main() => runApp(MyApp());
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     const title = 'WebSocket Demo';
-    return const MaterialApp(
+    return MaterialApp(
       title: title,
       home: MyHomePage(
         title: title,
@@ -20,22 +22,37 @@ class MyApp extends StatelessWidget {
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({
-    super.key,
+    Key? key,
     required this.title,
-  });
+  }) : super(key: key);
 
   final String title;
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  _MyHomePageState createState() => _MyHomePageState();
 }
 
 class _MyHomePageState extends State<MyHomePage> {
   final TextEditingController _controller = TextEditingController();
-  final _channel = WebSocketChannel.connect(
-    Uri.parse('wss://echo.websocket.events'),
-  );
-  List<String> _messages = [];
+  late WebSocketChannel _channel;
+  Uint8List? _imageBytes;
+  bool _showCaptureButton = true;
+  bool _showVideoButton = true;
+  bool _showStopCaptureButton = false;
+  bool _showStopVideoButton = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _channel = IOWebSocketChannel.connect('ws://192.168.137.26:8888');
+    _channel.stream.listen((data) {
+      if (data is Uint8List) {
+        setState(() {
+          _imageBytes = data;
+        });
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,93 +76,168 @@ class _MyHomePageState extends State<MyHomePage> {
                 child: Column(
                   children: [
                     const Text(
-                      "Sender",
+                      "Actions",
                       style: TextStyle(
                         fontSize: 15,
                         color: Colors.grey,
                       ),
                       textAlign: TextAlign.start,
                     ),
-                    Form(
-                      child: TextFormField(
-                        controller: _controller,
-                        decoration: const InputDecoration(
-                          labelText: 'Send a message',
-                          labelStyle: TextStyle(
-                            fontSize: 1,
-                            color: Colors.grey,
-                          ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        ElevatedButton(
+                          onPressed: _sendCaptureCommand,
+                          child: const Text('Capture Image'),
                         ),
-                      ),
+                        ElevatedButton(
+                          onPressed: _sendVideoCommand,
+                          child: const Text('Start Video'),
+                        ),
+                        ElevatedButton(
+                          onPressed: _reconnectWebSocket,
+                          child: const Text('Reconnect'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 24),
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 15, 10, 30),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(
-                      child: SizedBox(
-                        width: MediaQuery.of(context).size.width,
-                        child: const Text(
-                          "Receiver",
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: Colors.grey,
-                          ),
-                          textAlign: TextAlign.center,
+            Expanded(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 15, 10, 30),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              child: SizedBox(
+                                width: MediaQuery.of(context).size.width,
+                                child: const Text(
+                                  "Receiver",
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    color: Colors.grey,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            _imageBytes != null
+                                ? Image.memory(
+                              _imageBytes!,
+                              key: UniqueKey(), // Unique key to avoid flickering
+                            )
+                                : const Text('Waiting for connection'),
+                          ],
                         ),
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    StreamBuilder(
-                      stream: _channel.stream,
-                      builder: (context, snapshot) {
-                        if (snapshot.hasData) {
-                          return Padding(
-                            padding: const EdgeInsets.all(2.0),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.grey[300],
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              padding: const EdgeInsets.all(10),
-                              child: Text(snapshot.data.toString()),
-                            ),
-                          );
-                        } else {
-                          return const Text('Waiting for connection');
-                        }
-                      },
+                  ),
+                  if (_imageBytes != null && _showStopCaptureButton)
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: ElevatedButton(
+                        onPressed: _sendStopCaptureCommand,
+                        child: const Text('Stop Capture'),
+                      ),
                     ),
-                  ],
-                ),
+                  if (_imageBytes != null && _showStopVideoButton)
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: ElevatedButton(
+                        onPressed: _sendStopVideoCommand,
+                        child: const Text('Stop Video'),
+                      ),
+                    ),
+                ],
               ),
-            )
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () {
+                // TODO: Implement the image download logic
+              },
+              child: const Text('Download Image'),
+            ),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _sendMessage,
+        onPressed: () {
+          setState(() {
+            _showCaptureButton = true;
+            _showVideoButton = true;
+          });
+        },
         tooltip: 'Send message',
         child: const Icon(Icons.send),
       ),
     );
   }
 
-  void _sendMessage() {
-    if (_controller.text.isNotEmpty) {
-      _channel.sink.add(_controller.text);
-    }
+  void _sendCaptureCommand() {
+    _channel.sink.add('capture');
+    setState(() {
+      _showCaptureButton = false;
+      _showStopCaptureButton = true;
+      _showVideoButton = false;
+      _showStopVideoButton = false;
+    });
+  }
+
+  void _sendVideoCommand() {
+    _channel.sink.add('start video');
+    setState(() {
+      _showVideoButton = false;
+      _showStopVideoButton = true;
+      _showCaptureButton = false;
+      _showStopCaptureButton = false;
+    });
+  }
+
+  void _sendStopCaptureCommand() {
+    _channel.sink.add('stop capture');
+    setState(() {
+      _showCaptureButton = true;
+      _showStopCaptureButton = false;
+    });
+  }
+
+  void _sendStopVideoCommand() {
+    _channel.sink.add('stop video');
+    setState(() {
+      _showVideoButton = true;
+      _showStopVideoButton = false;
+    });
+  }
+
+  void _reconnectWebSocket() {
+    _channel.sink.close();
+    _channel = IOWebSocketChannel.connect('ws://192.168.137.26:8888');
+    _channel.stream.listen((data) {
+      if (data is Uint8List) {
+        setState(() {
+          _imageBytes = data;
+        });
+      }
+    });
+    setState(() {
+      _showCaptureButton = true;
+      _showVideoButton = true;
+      _showStopCaptureButton = false;
+      _showStopVideoButton = false;
+    });
   }
 
   @override
